@@ -152,7 +152,8 @@ def build_docx(data):
     if fin:
         tf=doc.add_table(rows=1+len(fin),cols=1+len(periods)); tf.style='Table Grid'
         lw=2500; dw=(9360-lw)//len(periods); ws=[lw]+[dw]*len(periods); ws[-1]+=9360-sum(ws); _cw(tf,ws)
-        for ci,h in enumerate(['Particulars'])+list(periods):
+        # Fixed parenthesis formatting bug line directly below:
+        for ci,h in enumerate(['Particulars'] + list(periods)):
             cell=tf.rows[0].cells[ci]; _bg(cell,'1A1A2E'); _borders(cell)
             p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2)
             _r(p,h,bold=True,size=9,color=RGBColor(255,255,255))
@@ -216,7 +217,7 @@ st.subheader("3. Curated Summary Evidence Source Documents")
 uploaded_files = st.file_uploader(
     "Select and drop your financial sheets / summary PDFs (You can select multiple files at once)", 
     type=["pdf", "png", "jpg", "jpeg"], 
-    accept_multiple_files=True # <-- THIS EXTENSION DIRECTLY FIXES THE UPLOAD LIMIT
+    accept_multiple_files=True
 )
 
 # ── COMPILING ENGINE EXECUTION ───────────────────────────────
