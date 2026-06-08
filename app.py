@@ -335,14 +335,15 @@ ENTITY RULES: {ENTITY_RULES[entity_type]}
 INVESTMENTS: {inv_text}
 
 CRITICAL EXTRACTION INSTRUCTIONS (STRICT GROUNDING):
-1) NATIVE PDF LAYOUT MAPPING:
-   - The attached document contains data arranged side-by-side in vertical columns. 
-   - Verify column headings visually. Map figures carefully across the 4 JSON data indices:
+1) MULTI-DOCUMENT DATA STITCHING & MAPPING:
+   - You are receiving MULTIPLE source documents. You must act as a data synthesizer.
+   - Half-yearly data (H1) and Annual data (FY) may reside in completely different attached files. 
+   - Hunt across ALL attached files to fill the 4 JSON data indices:
      * Index 0 = H1FY26 ("Sep 2025", "H1FY26", or "6 Months Ended Sep 30, 2025")
      * Index 1 = H1FY25 ("Sep 2024", "H1FY25", or "6 Months Ended Sep 30, 2024")
      * Index 2 = 31.03.2025 ("Mar 2025", "FY25", or "Year Ended March 31, 2025")
      * Index 3 = 31.03.2024 ("Mar 2024", "FY24", or "Year Ended March 31, 2024")
-   - IF A PERIOD COLUMN IS MISSING IN THE TARGET FILE, OUTPUT "—" FOR THAT INDEX. Never shift adjacent columns.
+   - CRITICAL: COMBINE the findings into a single unified row. ONLY output "—" for an index if that specific period's data cannot be found in ANY of the attached files. Do not overwrite valid data with a dash just because it is missing from one of the other documents.
 
 2) ROW ANCHORING:
    - Extract metrics exactly as listed. Do not look at row titles that don't match your target parameters.
