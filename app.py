@@ -6,6 +6,7 @@ import json
 import re
 import os
 import time
+import io
 import google.generativeai as genai
 import pandas as pd
 from docx import Document
