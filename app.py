@@ -1,5 +1,5 @@
 # ============================================================
-# APP.PY — BALANCED PRODUCTION CREDIT ANALYSIS PLATFORM
+# APP.PY — ZERO-DEPENDENCY STABLE PRODUCTION ENGINE
 # ============================================================
 import streamlit as st
 import json
@@ -22,7 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Financial-Themed CSS Shading (Dark Navy & Blue Accent)
 st.markdown("""
     <style>
     .reportview-container { background: #F8FAFC; }
@@ -42,7 +41,6 @@ st.markdown("""
 
 # ── INPUT SANITIZATION SAFETY LAYER ─────────────────────────
 def sanitize_report_data(data):
-    """Protects compiling operations from runtime data type discrepancies."""
     if not isinstance(data, dict):
         data = {}
     
@@ -104,13 +102,7 @@ def sanitize_report_data(data):
             {'heading': 'Liquidity', 'text': 'Refer to layout metrics.'}
         ]
     data['comments'] = clean_comm
-    
     data['recommendation'] = str(data.get('recommendation') or 'Review completed under grounded target parameters.')
-    warns = data.get('dataQualityWarnings')
-    if not isinstance(warns, list):
-        warns = []
-    data['dataQualityWarnings'] = [str(w or '') for w in warns]
-    
     return data
 
 # ── DOCX DESIGN TEMPLATE HELPERS ────────────────────────────
@@ -163,7 +155,6 @@ def build_docx(data):
     entity=data['entityType']
     periods=data['financialPeriods']
 
-    # Title Banner Block
     for text,sz,fill,clr in [
         (data['issuerName'].upper(),18,'1A1A2E',RGBColor(255,255,255)),
         ('Credit Review & Analysis',12,'1A1A2E',RGBColor(0x94,0xA3,0xB8)),
@@ -236,7 +227,6 @@ def build_docx(data):
                 
         for ri,m in enumerate(fin):
             row=tf.rows[ri+1]; bgc='FFFFFF' if ri%2==0 else 'EFF6FF'
-            
             raw_vals = m['values']
             sanitized_vals = []
             for idx in range(len(periods)):
@@ -264,7 +254,7 @@ def build_docx(data):
 
     t2=doc.add_table(rows=1,cols=2); t2.style='Table Grid'; _cw(t2,[4680,4680])
     for ci,(role,name) in enumerate([('Fund Manager',data['preparedBy']),('CIO',data['reviewedBy'])]):
-        cell=t2.rows[0].cells[ci]; _bg(cell,'F1F5F9'); _borders(cell)
+        cell=t2.rows[0].cells[ci]; _bg(cell Levant if 'F1F5F9' else 'F1F5F9','F1F5F9'); _borders(cell)
         p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(4); p.paragraph_format.space_after=Pt(4)
         _r(p,role+': ',bold=True,size=10,color=RGBColor(0x47,0x55,0x69)); _r(p,name,size=10,color=RGBColor(0x1F,0x29,0x37))
     return doc
@@ -273,12 +263,10 @@ def build_docx(data):
 st.title("📋 Automated Credit Review & Analysis Platform")
 st.subheader("Health Insurance Premium Corpus — Institutional Debt Automation")
 
-# SIDEBAR: SETUP & CREDENTIALS
 st.sidebar.header("🔑 Authentication & Sector Setup")
 api_key_input = st.sidebar.text_input("Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
 entity_type = st.sidebar.selectbox("Target Entity Classification", ["nbfc", "bank", "psu", "apex"], index=0)
 
-# MAIN FORM: METADATA
 st.subheader("1. General Assignment Parameters")
 c1, c2, c3 = st.columns(3)
 issuer_name = c1.text_input("Issuer Corporate Name", "Aditya Birla Capital Ltd")
@@ -290,7 +278,6 @@ industry = c4.text_input("Industry Classification Code", "NBFC - Core Investment
 sector = c5.text_input("Investment Sector", "Finance")
 review_period = c6.text_input("Report Analysis Review Period", "H1FY26 Review")
 
-# MAIN FORM: INTERACTIVE DATA EDITOR FOR BONDS
 st.subheader("2. Details of Debt Security / Investment under Review")
 default_bonds = [
     {"security": "NCD 25.07.2031", "yield": "7.43", "agency": "CRISIL", "rating": "AA+", "businessHouse": "Aditya Birla Group", "fv": "10", "sh": "", "ph": "10"}
@@ -298,7 +285,6 @@ default_bonds = [
 bond_df = pd.DataFrame(default_bonds)
 edited_bond_df = st.data_editor(bond_df, num_rows="dynamic", use_container_width=True)
 
-# MAIN FORM: UPGRADED MULTI-FILE UPLOADER
 st.subheader("3. Curated Summary Evidence Source Documents")
 uploaded_files = st.file_uploader(
     "Select and drop your financial sheets / summary PDFs (You can select multiple files at once)", 
@@ -306,7 +292,6 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-# ── COMPILING ENGINE EXECUTION ───────────────────────────────
 if st.button("Generate Formal Credit Document"):
     if not api_key_input.strip():
         st.error("❌ Action Blocked: Please enter a valid Gemini API Key in the sidebar.")
@@ -316,22 +301,17 @@ if st.button("Generate Formal Credit Document"):
         with st.spinner("🚀 Initializing native File API hosting engine..."):
             genai.configure(api_key=api_key_input.strip())
             hosted_gemini_files = []
-            
             try:
                 for idx, file in enumerate(uploaded_files, start=1):
                     ext = file.name.split('.')[-1].lower()
                     mime_type = 'application/pdf' if ext == 'pdf' else f'image/{ext}'
-                    
                     tmp_filepath = f"/tmp/web_upload_{idx}.{ext}"
                     with open(tmp_filepath, "wb") as f:
                         f.write(file.getbuffer())
-                    
                     st.write(f"📤 Hosting item: `{file.name}` directly on Gemini server cluster...")
                     gfile = genai.upload_file(tmp_filepath, mime_type=mime_type)
                     hosted_gemini_files.append(gfile)
-                
                 st.success(f"✅ Context packages active on server nodes: {len(hosted_gemini_files)} files hosted.")
-                
             except Exception as e:
                 st.error(f"❌ Connection Interrupted during server file injection: {e}")
                 st.stop()
@@ -343,7 +323,6 @@ if st.button("Generate Formal Credit Document"):
                 'psu' : 'PSU Finance. INCLUDE: NII, PAT, Net Worth, Loans, Borrowings, GNPA/Gross Stage 3%, NNPA/Net Stage 3%, CRAR%, Debt/Equity, EPS. NO Deposits.',
                 'apex': 'Apex DFI. INCLUDE: NII, PAT, Net Worth, Advances, Borrowings, GNPA%, NNPA%, CRAR%, ROA%. Comment on GoI mandate.'
             }
-            
             investments_list = edited_bond_df.to_dict(orient="records")
             inv_text = "\n".join([f"- {i.get('security')} | Yield {i.get('yield')}% | {i.get('rating')} ({i.get('agency')}) | FV Rs {i.get('fv')} Cr" for i in investments_list if i.get('security')])
             
@@ -441,17 +420,11 @@ Respond ONLY with valid JSON. No markdown. No explanation. Just the JSON object.
                 match = re.search(r'\{[\s\S]*\}', clean_json_str)
                 if match: clean_json_str = match.group(0)
                 
-                # ── BALANCED DUAL DECODING ENGINE ──
-                try:
-                    raw_data = json.loads(clean_json_str)
-                except Exception:
-                    import json5 # Handles minor loose syntax faults seamlessly
-                    raw_data = json5.loads(clean_json_str)
+                # Zero-dependency syntax cleaner pass
+                clean_json_str = re.sub(r',\s*([\]}])', r'\1', clean_json_str)
+                raw_data = json.loads(clean_json_str)
                 
-                # Execute Data Sanitization
                 report_data = sanitize_report_data(raw_data)
-                
-                # Ingest Form Fields
                 report_data.update({
                     'issuerName': issuer_name, 'entityType': entity_type,
                     'preparedBy': prepared_by, 'reviewedBy': reviewed_by,
@@ -460,13 +433,11 @@ Respond ONLY with valid JSON. No markdown. No explanation. Just the JSON object.
                 })
                 
                 generated_docx = build_docx(report_data)
-                
                 docx_buffer = io.BytesIO()
                 generated_docx.save(docx_buffer)
                 docx_bytes = docx_buffer.getvalue()
                 
                 st.success("🎉 Credit Review compiled completely without a single verification crash!")
-                
                 filename_output = f"{issuer_name.replace(' ', '_')}_Credit_Report.docx"
                 st.download_button(
                     label="📥 Download Formatted Credit Report (.docx)",
