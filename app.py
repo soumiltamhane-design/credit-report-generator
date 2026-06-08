@@ -254,7 +254,7 @@ def build_docx(data):
 
     t2=doc.add_table(rows=1,cols=2); t2.style='Table Grid'; _cw(t2,[4680,4680])
     for ci,(role,name) in enumerate([('Fund Manager',data['preparedBy']),('CIO',data['reviewedBy'])]):
-        cell=t2.rows[0].cells[ci]; _bg(cell,'F1F5F9'); _borders(cell)
+        cell=t2.rows[0].cells[ci]; _bg(cell, 'F1F5F9'); _borders(cell)
         p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(4); p.paragraph_format.space_after=Pt(4)
         _r(p,role+': ',bold=True,size=10,color=RGBColor(0x47,0x55,0x69)); _r(p,name,size=10,color=RGBColor(0x1F,0x29,0x37))
     return doc
