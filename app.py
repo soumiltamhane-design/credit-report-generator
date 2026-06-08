@@ -1,5 +1,5 @@
 # ============================================================
-# APP.PY — PRODUCTION-GRADE CREDIT REPORT GENERATOR WEB UI
+# APP.PY — BALANCED PRODUCTION CREDIT ANALYSIS PLATFORM
 # ============================================================
 import streamlit as st
 import json
@@ -40,22 +40,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ── IRONCLAD INPUT SANITIZATION LAYER ───────────────────────
+# ── INPUT SANITIZATION SAFETY LAYER ─────────────────────────
 def sanitize_report_data(data):
-    """Bypasses type failures by converting potential nulls into secure structures before rendering."""
+    """Protects compiling operations from runtime data type discrepancies."""
     if not isinstance(data, dict):
         data = {}
     
-    # Secure company profile narrative string
     data['companyProfile'] = str(data.get('companyProfile') or '')
     
-    # Secure period headings array 
     periods = data.get('financialPeriods')
     if not isinstance(periods, list) or len(periods) == 0:
         periods = ['H1FY26', 'H1FY25', '31.03.2025', '31.03.2024']
     data['financialPeriods'] = [str(p or '') for p in periods]
     
-    # Secure standard financial metrics array list
     fin_data = data.get('financialData')
     if not isinstance(fin_data, list):
         fin_data = []
@@ -70,7 +67,6 @@ def sanitize_report_data(data):
             clean_fin.append({'metric': metric_name, 'values': clean_vals})
     data['financialData'] = clean_fin
     
-    # Secure conditional business segment metrics list
     cond_data = data.get('conditionalMetrics')
     if not isinstance(cond_data, list):
         cond_data = []
@@ -89,7 +85,6 @@ def sanitize_report_data(data):
             clean_cond.append({'metric': metric_name, 'values': clean_vals, 'includeFor': clean_inc})
     data['conditionalMetrics'] = clean_cond
     
-    # Secure text narrative analytical comment segments (Resolves string concatenation bug)
     comments_data = data.get('comments')
     if not isinstance(comments_data, list):
         comments_data = []
@@ -110,7 +105,6 @@ def sanitize_report_data(data):
         ]
     data['comments'] = clean_comm
     
-    # Secure recommendation and quality notes
     data['recommendation'] = str(data.get('recommendation') or 'Review completed under grounded target parameters.')
     warns = data.get('dataQualityWarnings')
     if not isinstance(warns, list):
@@ -169,7 +163,7 @@ def build_docx(data):
     entity=data['entityType']
     periods=data['financialPeriods']
 
-    # Title Block
+    # Title Banner Block
     for text,sz,fill,clr in [
         (data['issuerName'].upper(),18,'1A1A2E',RGBColor(255,255,255)),
         ('Credit Review & Analysis',12,'1A1A2E',RGBColor(0x94,0xA3,0xB8)),
@@ -293,14 +287,13 @@ reviewed_by = c3.text_input("Reviewed By (CIO)", "Dhaval Shah")
 
 c4, c5, c6 = st.columns(3)
 industry = c4.text_input("Industry Classification Code", "NBFC - Core Investment Company")
-sector = c5.text_input("Investment Sector", "Financial Services")
+sector = c5.text_input("Investment Sector", "Finance")
 review_period = c6.text_input("Report Analysis Review Period", "H1FY26 Review")
 
 # MAIN FORM: INTERACTIVE DATA EDITOR FOR BONDS
 st.subheader("2. Details of Debt Security / Investment under Review")
 default_bonds = [
-    {"security": "NCD 04.02.2026", "yield": "7.54", "agency": "CRISIL", "rating": "A1+", "businessHouse": "Axis Bank", "fv": "25", "sh": "", "ph": "25"},
-    {"security": "NCD 08.01.2026", "yield": "7.45", "agency": "CRISIL", "rating": "A1+", "businessHouse": "Axis Bank", "fv": "25", "sh": "", "ph": "25"}
+    {"security": "NCD 25.07.2031", "yield": "7.43", "agency": "CRISIL", "rating": "AA+", "businessHouse": "Aditya Birla Group", "fv": "10", "sh": "", "ph": "10"}
 ]
 bond_df = pd.DataFrame(default_bonds)
 edited_bond_df = st.data_editor(bond_df, num_rows="dynamic", use_container_width=True)
@@ -400,7 +393,7 @@ Respond ONLY with valid JSON. No markdown. No explanation. Just the JSON object.
   ],
   "conditionalMetrics": [
     {{"metric":"Deposits","values":["...","...","...","..."],"includeFor":["bank","apex"]}},
-    {{"metric":"CASA (%)","values":["...","...","...","..."],"includeFor":["bank"]}},
+    {{"metric":"CASA (%)","values":["...","...","...","..."],"includeFor":["banktoggle"]}},
     {{"metric":"NIM (%)","values":["...","...","...","..."],"includeFor":["bank","nbfc","psu"]}},
     {{"metric":"ROA (%)","values":["...","...","...","..."],"includeFor":["bank","apex"]}},
     {{"metric":"ROE (%)","values":["...","...","...","..."],"includeFor":["bank","nbfc","psu"]}},
@@ -448,12 +441,17 @@ Respond ONLY with valid JSON. No markdown. No explanation. Just the JSON object.
                 match = re.search(r'\{[\s\S]*\}', clean_json_str)
                 if match: clean_json_str = match.group(0)
                 
-                raw_data = json.loads(clean_json_str)
+                # ── BALANCED DUAL DECODING ENGINE ──
+                try:
+                    raw_data = json.loads(clean_json_str)
+                except Exception:
+                    import json5 # Handles minor loose syntax faults seamlessly
+                    raw_data = json5.loads(clean_json_str)
                 
-                # Execute the Ironclad Sanitization Layer before rendering elements
+                # Execute Data Sanitization
                 report_data = sanitize_report_data(raw_data)
                 
-                # Combine user parameters
+                # Ingest Form Fields
                 report_data.update({
                     'issuerName': issuer_name, 'entityType': entity_type,
                     'preparedBy': prepared_by, 'reviewedBy': reviewed_by,
