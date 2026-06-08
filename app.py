@@ -152,18 +152,33 @@ def build_docx(data):
     if fin:
         tf=doc.add_table(rows=1+len(fin),cols=1+len(periods)); tf.style='Table Grid'
         lw=2500; dw=(9360-lw)//len(periods); ws=[lw]+[dw]*len(periods); ws[-1]+=9360-sum(ws); _cw(tf,ws)
-        # Fixed parenthesis formatting bug line directly below:
-        for ci,h in enumerate(['Particulars'] + list(periods)):
-            cell=tf.rows[0].cells[ci]; _bg(cell,'1A1A2E'); _borders(cell)
-            p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2)
-            _r(p,h,bold=True,size=9,color=RGBColor(255,255,255))
+        
+        header_row = ['Particulars'] + list(periods)
+        for ci,h in enumerate(header_row):
+            if ci < len(tf.rows[0].cells):
+                cell=tf.rows[0].cells[ci]; _bg(cell,'1A1A2E'); _borders(cell)
+                p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2)
+                _r(p,h,bold=True,size=9,color=RGBColor(255,255,255))
+                
         for ri,m in enumerate(fin):
             row=tf.rows[ri+1]; bgc='FFFFFF' if ri%2==0 else 'EFF6FF'
-            m_row = [m.get('metric','')] + [str(x) if x not in [None, ''] else '—' for x in m.get('values',[])]
+            
+            # Boundary Protection Check: Safeguards structure against response dynamic length variances
+            raw_vals = m.get('values', [])
+            sanitized_vals = []
+            for idx in range(len(periods)):
+                if idx < len(raw_vals):
+                    val = str(raw_vals[idx])
+                    sanitized_vals.append(val if val not in [None, '', 'nan'] else '—')
+                else:
+                    sanitized_vals.append('—')
+            
+            m_row = [m.get('metric','')] + sanitized_vals
             for ci,v in enumerate(m_row):
-                cell=row.cells[ci]; _bg(cell,bgc); _borders(cell)
-                p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2)
-                _r(p,v,bold=(ci==0),size=9.5,color=RGBColor(0x1F,0x29,0x37))
+                if ci < len(row.cells):
+                    cell=row.cells[ci]; _bg(cell,bgc); _borders(cell)
+                    p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2)
+                    _r(p,v,bold=(ci==0),size=9.5,color=RGBColor(0x1F,0x29,0x37))
 
     _hd(doc,'Comments')
     for c in data.get('comments',[]):
@@ -335,7 +350,6 @@ Respond ONLY with valid JSON. No markdown. No explanation. Just the JSON object.
             )
             
             raw_response_text = None
-            # Loop-back configuration protection for per-minute limits
             for attempt in range(3):
                 try:
                     response = model.generate_content(content_payload)
