@@ -1,452 +1,945 @@
 import streamlit as st
-import json, re, io, os, base64, requests
 import google.generativeai as genai
+import json, json5, re, os, time, tempfile, requests
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+import io
 
-st.set_page_config(page_title="Credit Report Generator", page_icon="📋", layout="wide", initial_sidebar_state="expanded")
+# ─────────────────────────────────────────────
+# PAGE CONFIG
+# ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="Credit Report Generator",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# ─────────────────────────────────────────────
+# STYLES
+# ─────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
-.stApp { background: #0f0f13; color: #e8e4dc; }
-[data-testid="stSidebar"] { background: #16161c; border-right: 1px solid #2a2a35; }
-h1 { font-family: 'DM Serif Display', serif !important; font-size: 2.2rem !important; color: #e8e4dc !important; letter-spacing: -1px !important; }
-h2, h3 { font-family: 'DM Serif Display', serif !important; color: #e8e4dc !important; }
-label, .stTextInput label, .stSelectbox label, .stTextArea label { color: #9b9688 !important; font-size: 0.75rem !important; font-weight: 600 !important; letter-spacing: 1px !important; text-transform: uppercase !important; }
-.stTextInput input, .stTextArea textarea { background: #1c1c24 !important; border: 1px solid #2a2a35 !important; border-radius: 8px !important; color: #e8e4dc !important; }
-.stTextInput input:focus, .stTextArea textarea:focus { border-color: #c9a84c !important; box-shadow: 0 0 0 2px rgba(201,168,76,0.15) !important; }
-.stButton button { background: #c9a84c !important; color: #0f0f13 !important; border: none !important; border-radius: 8px !important; font-weight: 600 !important; padding: 0.6rem 1.5rem !important; }
-.stButton button:hover { background: #e0bc62 !important; }
-.stDownloadButton button { background: #1c1c24 !important; color: #c9a84c !important; border: 1px solid #c9a84c !important; border-radius: 8px !important; font-weight: 600 !important; }
-.stDownloadButton button:hover { background: #c9a84c !important; color: #0f0f13 !important; }
-.stRadio label { color: #e8e4dc !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 0.9rem !important; font-weight: 400 !important; }
-hr { border-color: #2a2a35 !important; margin: 20px 0 !important; }
-#MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
-.url-section { background: #16161c; border: 1px solid #2a2a35; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
-.period-badge { display: inline-block; background: rgba(201,168,76,0.15); color: #c9a84c; border: 1px solid rgba(201,168,76,0.3); border-radius: 4px; padding: 2px 8px; font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+    background-color: #0D0D14;
+    color: #E2DDD4;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #13131E;
+    border-right: 1px solid #1E1E2E;
+}
+[data-testid="stSidebar"] * { color: #C5BFB3 !important; }
+
+/* Headers */
+h1 { font-family: 'DM Serif Display', serif !important; color: #C9A84C !important; letter-spacing: -0.5px; }
+h2, h3 { color: #C9A84C !important; font-weight: 600 !important; }
+
+/* Inputs */
+input, textarea, select, [data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea {
+    background-color: #1A1A28 !important;
+    border: 1px solid #2A2A3E !important;
+    color: #E2DDD4 !important;
+    border-radius: 6px !important;
+}
+input:focus, textarea:focus {
+    border-color: #C9A84C !important;
+    box-shadow: 0 0 0 2px rgba(201,168,76,0.15) !important;
+}
+
+/* Labels */
+label { color: #9D9890 !important; font-size: 0.82rem !important; font-weight: 500 !important; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #C9A84C, #A8872E) !important;
+    color: #0D0D14 !important;
+    font-weight: 700 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 0.6rem 1.5rem !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.02em;
+    transition: opacity 0.2s;
+}
+.stButton > button:hover { opacity: 0.88 !important; }
+
+/* Download button */
+.stDownloadButton > button {
+    background: #1A1A28 !important;
+    color: #C9A84C !important;
+    border: 1px solid #C9A84C !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+    background-color: #13131E !important;
+    border: 1px solid #1E1E2E !important;
+    border-radius: 8px !important;
+}
+
+/* Tabs */
+[data-testid="stTabs"] button {
+    color: #9D9890 !important;
+    font-weight: 500 !important;
+    border-bottom: 2px solid transparent !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #C9A84C !important;
+    border-bottom-color: #C9A84C !important;
+}
+
+/* Radio */
+[data-testid="stRadio"] label { text-transform: none !important; font-size: 0.9rem !important; }
+
+/* Section card */
+.section-card {
+    background: #13131E;
+    border: 1px solid #1E1E2E;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.2rem;
+}
+.section-label {
+    color: #C9A84C;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+}
+.url-tag {
+    display: inline-block;
+    background: #1E1E2E;
+    color: #C9A84C;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    letter-spacing: 0.06em;
+}
+.status-ok { color: #4CAF50; font-size: 0.85rem; }
+.status-warn { color: #FF9800; font-size: 0.85rem; }
+.header-bar {
+    background: linear-gradient(135deg, #13131E, #1A1A28);
+    border-left: 3px solid #C9A84C;
+    padding: 1.2rem 1.5rem;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 2rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ── DOCX builder ──────────────────────────────────────────────
-DARK_NAVY=RGBColor(0x1A,0x1A,0x2E); BLUE=RGBColor(0x25,0x63,0xEB); WHITE=RGBColor(0xFF,0xFF,0xFF)
-DARK_TEXT=RGBColor(0x1F,0x29,0x37); MUTED_C=RGBColor(0x47,0x55,0x69)
 
-def _bg(cell,h):
-    s=OxmlElement('w:shd'); s.set(qn('w:val'),'clear'); s.set(qn('w:color'),'auto'); s.set(qn('w:fill'),h)
-    cell._tc.get_or_add_tcPr().append(s)
-
-def _borders(cell):
-    b=OxmlElement('w:tcBorders')
-    for side in ('top','bottom','left','right'):
-        e=OxmlElement(f'w:{side}'); e.set(qn('w:val'),'single'); e.set(qn('w:sz'),'2'); e.set(qn('w:space'),'0'); e.set(qn('w:color'),'CCCCCC'); b.append(e)
-    cell._tc.get_or_add_tcPr().append(b)
-
-def _cw(table,widths):
-    tg=OxmlElement('w:tblGrid')
-    for w in widths:
-        gc=OxmlElement('w:gridCol'); gc.set(qn('w:w'),str(w)); tg.append(gc)
-    table._tbl.insert(1,tg)
-    for row in table.rows:
-        for cell,w in zip(row.cells,widths):
-            tw=OxmlElement('w:tcW'); tw.set(qn('w:w'),str(w)); tw.set(qn('w:type'),'dxa'); cell._tc.get_or_add_tcPr().append(tw)
-
-def _r(para,text,bold=False,size=10.5,color=None):
-    run=para.add_run(str(text)); run.bold=bold; run.font.name='Calibri'; run.font.size=Pt(size)
-    if color: run.font.color.rgb=color
-    return run
-
-def _hd(doc,text):
-    p=doc.add_paragraph(); p.paragraph_format.space_before=Pt(12); p.paragraph_format.space_after=Pt(4)
-    _r(p,text.upper(),bold=True,size=9.5,color=BLUE)
-    pBdr=OxmlElement('w:pBdr'); btm=OxmlElement('w:bottom')
-    btm.set(qn('w:val'),'single'); btm.set(qn('w:sz'),'8'); btm.set(qn('w:space'),'1'); btm.set(qn('w:color'),'2563EB')
-    pBdr.append(btm); p._p.get_or_add_pPr().append(pBdr)
-
-def build_docx(data):
-    doc=Document()
-    for section in doc.sections:
-        section.page_height=Cm(29.7); section.page_width=Cm(21.0)
-        section.left_margin=Inches(1); section.right_margin=Inches(1)
-        section.top_margin=Inches(1); section.bottom_margin=Inches(1)
-    entity=data['entityType']
-    periods=data.get('financialPeriods',['H1FY26','H1FY25','31.03.2025','31.03.2024'])
-    for text,sz,fill,clr in [(data['issuerName'].upper(),18,'1A1A2E',WHITE),('Credit Review & Analysis',12,'1A1A2E',RGBColor(0x94,0xA3,0xB8)),(' ',4,'2563EB',WHITE)]:
-        p=doc.add_paragraph(); p.paragraph_format.space_before=Pt(0); p.paragraph_format.space_after=Pt(0)
-        shd=OxmlElement('w:shd'); shd.set(qn('w:val'),'clear'); shd.set(qn('w:color'),'auto'); shd.set(qn('w:fill'),fill); p._p.get_or_add_pPr().append(shd)
-        _r(p,text,bold=(sz==18),size=sz,color=clr)
-    _hd(doc,'Company Profile')
-    p=doc.add_paragraph(); p.paragraph_format.space_after=Pt(8); _r(p,data.get('companyProfile',''),size=10.5,color=DARK_TEXT)
-    _hd(doc,'Issuer Information')
-    t=doc.add_table(rows=6,cols=2); t.style='Table Grid'; _cw(t,[2700,6300])
-    for i,(label,value) in enumerate([('Issuer',data['issuerName']),('Industry as per NIC code',data.get('industry','')),('Sector',data.get('sector','')),('Review Period',data.get('reviewPeriod','')),('Prepared By',data['preparedBy']),('Reviewed By',data['reviewedBy'])]):
-        lc,vc=t.rows[i].cells[0],t.rows[i].cells[1]
-        _bg(lc,'F1F5F9'); _borders(lc); _bg(vc,'FFFFFF'); _borders(vc)
-        for cell,txt,bold,clr in [(lc,label,True,MUTED_C),(vc,value,False,DARK_TEXT)]:
-            p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2); _r(p,txt,bold=bold,size=9.5,color=clr)
-    doc.add_paragraph().paragraph_format.space_after=Pt(4)
-    _hd(doc,'Brief Detail of Investment under Review')
-    p2=doc.add_paragraph(); p2.paragraph_format.space_after=Pt(4); _r(p2,'(Rs. in crores)',size=9,color=MUTED_C)
-    invs=[i for i in data.get('investments',[]) if i.get('security')]
-    if invs:
-        hdrs=['Security / Date of Maturity','Holding Yield','Credit Rating Agency','Credit Rating','Business House','Total Nominal Value (F.V)','SH','PH']
-        ti=doc.add_table(rows=1+len(invs),cols=8); ti.style='Table Grid'
-        ws=[2100,680,1100,700,1100,1100,680,680]; total=9360; s=sum(ws); ws=[int(w*total/s) for w in ws]; ws[-1]+=total-sum(ws); _cw(ti,ws)
-        for ci,h in enumerate(hdrs):
-            cell=ti.rows[0].cells[ci]; _bg(cell,'1A1A2E'); _borders(cell)
-            p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2); _r(p,h,bold=True,size=8,color=WHITE)
-        for ri,inv in enumerate(invs):
-            row=ti.rows[ri+1]; bgc='FFFFFF' if ri%2==0 else 'F8FAFC'
-            for ci,v in enumerate([inv.get('security',''),inv.get('yield',''),inv.get('agency',''),inv.get('rating',''),inv.get('businessHouse',''),inv.get('fv',''),inv.get('sh',''),inv.get('ph','')]):
-                cell=row.cells[ci]; _bg(cell,bgc); _borders(cell)
-                p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2); _r(p,v or '',size=9,color=DARK_TEXT)
-    doc.add_paragraph().paragraph_format.space_after=Pt(4)
-    _hd(doc,'Financial Strength')
-    p3=doc.add_paragraph(); p3.paragraph_format.space_after=Pt(4); _r(p3,'(Rs. in crores)',size=9,color=MUTED_C)
-    fin=list(data.get('financialData',[]))
-    for m in data.get('conditionalMetrics',[]):
-        if entity in m.get('includeFor',[]): fin.append(m)
-    if fin:
-        tf=doc.add_table(rows=1+len(fin),cols=1+len(periods)); tf.style='Table Grid'
-        lw=2500; dw=(9360-lw)//len(periods); ws=[lw]+[dw]*len(periods); ws[-1]+=9360-sum(ws); _cw(tf,ws)
-        for ci,h in enumerate(['Particulars']+list(periods)):
-            cell=tf.rows[0].cells[ci]; _bg(cell,'1A1A2E'); _borders(cell)
-            p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2); _r(p,h,bold=True,size=9,color=WHITE)
-        for ri,m in enumerate(fin):
-            row=tf.rows[ri+1]; bgc='FFFFFF' if ri%2==0 else 'EFF6FF'
-            for ci,v in enumerate([m.get('metric','')]+[str(x) if x else '—' for x in m.get('values',[])]):
-                cell=row.cells[ci]; _bg(cell,bgc); _borders(cell)
-                p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(2); p.paragraph_format.space_after=Pt(2); _r(p,v,bold=(ci==0),size=9.5,color=DARK_TEXT)
-    doc.add_paragraph().paragraph_format.space_after=Pt(4)
-    _hd(doc,'Comments')
-    for c in data.get('comments',[]):
-        p=doc.add_paragraph(); p.paragraph_format.space_before=Pt(4); p.paragraph_format.space_after=Pt(4)
-        _r(p,c['heading']+': ',bold=True,size=10.5,color=BLUE); _r(p,c['text'],size=10.5,color=DARK_TEXT)
-    doc.add_paragraph().paragraph_format.space_after=Pt(4)
-    _hd(doc,'Recommendation')
-    p4=doc.add_paragraph(); p4.paragraph_format.space_after=Pt(16); _r(p4,data.get('recommendation',''),size=10.5,color=DARK_TEXT)
-    t2=doc.add_table(rows=1,cols=2); t2.style='Table Grid'; _cw(t2,[4680,4680])
-    for ci,(role,name) in enumerate([('Fund Manager',data['preparedBy']),('CIO',data['reviewedBy'])]):
-        cell=t2.rows[0].cells[ci]; _bg(cell,'F1F5F9'); _borders(cell)
-        p=cell.paragraphs[0]; p.paragraph_format.space_before=Pt(4); p.paragraph_format.space_after=Pt(4)
-        _r(p,role+': ',bold=True,size=10,color=MUTED_C); _r(p,name,size=10,color=DARK_TEXT)
-    buf=io.BytesIO(); doc.save(buf); buf.seek(0); return buf
-
-# ── PDF extraction ────────────────────────────────────────────
-def extract_from_pdf_bytes(pdf_bytes, label):
-    text = ''
-    try:
-        import fitz
-        doc = fitz.open(stream=pdf_bytes, filetype='pdf')
-        page_keywords = ['profit','loss','income','balance sheet','assets','npa','gnpa','capital adequacy','crar','net interest','borrowings','advances','deposits','net worth','stage 3','ratios','notes to']
-        scored = []
-        for i in range(len(doc)):
-            page = doc[i]; t = page.get_text(); tl = t.lower()
-            score = sum(1 for kw in page_keywords if kw in tl)
-            if score >= 2: scored.append((score, i, t))
-        scored.sort(reverse=True)
-        for score, pnum, t in scored[:15]:
-            tl = t.lower()
-            if any(kw in tl for kw in ['profit and loss','statement of profit']): lbl='[P&L]'
-            elif any(kw in tl for kw in ['balance sheet','financial position']): lbl='[BALANCE SHEET]'
-            elif any(kw in tl for kw in ['capital adequacy','crar','tier i']): lbl='[NOTES-CAPITAL]'
-            elif any(kw in tl for kw in ['gross npa','net npa','stage 3','asset quality']): lbl='[NOTES-NPA]'
-            elif any(kw in tl for kw in ['borrowings','debentures','ncd']): lbl='[NOTES-BORROWINGS]'
-            elif any(kw in tl for kw in ['ratio','nim','roa','roe','highlights']): lbl='[KEY RATIOS]'
-            else: lbl='[FINANCIAL PAGE]'
-            text += f'\n\n{"="*40}\n{lbl} pg{pnum+1}\n{"="*40}\n{t}'
-        doc.close()
-    except Exception as e:
-        try:
-            import pdfplumber
-            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-                text = '\n'.join([p.extract_text() or '' for p in pdf.pages[:30]])
-        except: pass
-    return f'\n\n{"#"*40}\n[{label}]\n{"#"*40}\n{text[:5000]}'
-
-def fetch_pdf(url, label):
-    if not url.strip(): return ''
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(url.strip(), headers=headers, timeout=60)
-        ct = r.headers.get('Content-Type','').lower()
-        if 'pdf' in ct or url.lower().endswith('.pdf') or '.pdf?' in url.lower():
-            return extract_from_pdf_bytes(r.content, label)
-        else:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(r.text,'html.parser')
-            candidates = []
-            base = url.split('/')[0]+'//'+url.split('/')[2]
-            for tag in soup.find_all('a', href=True):
-                href = tag['href']
-                full = href if href.startswith('http') else base+href
-                if '.pdf' in full.lower():
-                    txt = tag.get_text(strip=True).lower()
-                    score = sum(3 for kw in ['annual report','quarterly result','financial result','q1','q2','h1','fy25','fy26'] if kw in txt+full.lower())
-                    score -= sum(5 for kw in ['csr','agm','notice','sustainability'] if kw in txt+full.lower())
-                    candidates.append((score, full))
-            if candidates:
-                candidates.sort(reverse=True)
-                best = candidates[0][1]
-                r2 = requests.get(best, headers=headers, timeout=60)
-                return extract_from_pdf_bytes(r2.content, label)
-    except Exception as e:
-        st.warning(f'Could not fetch {label}: {e}')
-    return ''
-
-# ── Sidebar ───────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("# 📋 Credit Report\nGenerator")
+    st.markdown("## ⚙️ Configuration")
     st.markdown("---")
-    st.markdown('<p style="color:#9b9688;font-size:0.8rem">Health Insurance Premium Corpus</p>', unsafe_allow_html=True)
-    st.markdown("### Configuration")
-    api_key = st.text_input("Gemini API Key", type="password", placeholder="AIza...")
+
+    api_key = st.text_input("Gemini API Key", type="password",
+                            placeholder="AIza...",
+                            help="Get free key at aistudio.google.com")
+
     st.markdown("---")
-    st.markdown("### Entity Type")
-    entity_type = st.radio("", ["Bank / SFB", "NBFC / IFC", "PSU Finance", "Apex Institution"], label_visibility="collapsed")
-    entity_map = {"Bank / SFB":"bank","NBFC / IFC":"nbfc","PSU Finance":"psu","Apex Institution":"apex"}
-    entity_code = entity_map[entity_type]
+    st.markdown("**Entity Type**")
+    entity_type = st.radio("", [
+        "NBFC / IFC",
+        "Bank / SFB",
+        "PSU Finance",
+        "Apex DFI"
+    ], label_visibility="collapsed")
+
     st.markdown("---")
-    st.markdown('<p style="color:#9b9688;font-size:0.75rem">Cost per report: ~₹0 | Free tier: 50/day</p>', unsafe_allow_html=True)
+    st.markdown("**Prepared By**")
+    prepared_by = st.text_input("Analyst Name", placeholder="Your name", label_visibility="collapsed")
+    st.markdown("**Reviewed By**")
+    reviewed_by = st.text_input("CIO / Manager Name", placeholder="CIO name", label_visibility="collapsed")
 
-# ── Main ──────────────────────────────────────────────────────
-st.markdown("# Credit Report Generator")
-st.markdown('<p style="color:#9b9688;margin-top:-12px;margin-bottom:28px">AI-powered credit analysis for debt investment decisions</p>', unsafe_allow_html=True)
+    st.markdown("---")
+    st.caption("v3.0 · Gemini File API · Accurate extraction")
 
-col1, col2 = st.columns([1.2, 1], gap="large")
 
+# ─────────────────────────────────────────────
+# MAIN HEADER
+# ─────────────────────────────────────────────
+st.markdown("""
+<div class="header-bar">
+    <h1 style="margin:0;font-size:1.8rem;">Credit Report Generator</h1>
+    <p style="margin:0.3rem 0 0;color:#9D9890;font-size:0.88rem;">
+        AI-powered · Gemini File API · Accurate financial extraction
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# ISSUER DETAILS
+# ─────────────────────────────────────────────
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Issuer Details</div>', unsafe_allow_html=True)
+
+col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown("### Issuer Details")
-    c1,c2 = st.columns(2)
-    with c1: issuer_name = st.text_input("Issuer Name", placeholder="Power Finance Corporation Ltd")
-    with c2: review_period = st.text_input("Review Period", value="Year period ended September 30, 2025")
-    c3,c4 = st.columns(2)
-    with c3: prepared_by = st.text_input("Prepared By", placeholder="Analyst Name")
-    with c4: reviewed_by = st.text_input("Reviewed By", placeholder="CIO Name")
-    c5,c6 = st.columns(2)
-    with c5: industry = st.text_input("Industry", value="Financial and insurance activities")
-    with c6: sector = st.text_input("Sector", value="Finance")
+    issuer_name = st.text_input("Issuer Name", placeholder="e.g. Power Finance Corporation Ltd")
+with col2:
+    industry = st.text_input("Industry (NIC)", placeholder="e.g. Financial Services")
+with col3:
+    sector = st.text_input("Sector", placeholder="e.g. NBFC – Infrastructure Finance")
 
-    st.markdown("---")
-    st.markdown("### Source Documents")
-    st.markdown('<p style="color:#9b9688;font-size:0.85rem">Paste direct PDF links from BSE/NSE/company IR page. H1 figures are auto-calculated from Q1+Q2.</p>', unsafe_allow_html=True)
+col4, col5 = st.columns(2)
+with col4:
+    review_period = st.text_input("Review Period", placeholder="e.g. H1FY26 (April – September 2025)")
+with col5:
+    business_house = st.text_input("Business House / Group", placeholder="e.g. Government of India")
 
-    tab1, tab2 = st.tabs(["🔗 Paste URLs", "📁 Upload Files"])
+st.markdown('</div>', unsafe_allow_html=True)
 
-    with tab1:
-        st.markdown('<p style="color:#c9a84c;font-size:0.75rem;font-weight:700;letter-spacing:1px">H1FY26 = Q1FY26 + Q2FY26 &nbsp;|&nbsp; H1FY25 = Q1FY25 + Q2FY25</p>', unsafe_allow_html=True)
-        q1fy26_url = st.text_input("Q1FY26 — Apr-Jun 2025 Quarterly Results", placeholder="https://...pdf")
-        q2fy26_url = st.text_input("Q2FY26 — Jul-Sep 2025 Quarterly Results", placeholder="https://...pdf")
-        q1fy25_url = st.text_input("Q1FY25 — Apr-Jun 2024 Quarterly Results", placeholder="https://...pdf")
-        q2fy25_url = st.text_input("Q2FY25 — Jul-Sep 2024 Quarterly Results", placeholder="https://...pdf")
-        fy25_url   = st.text_input("FY25 Annual Report — 31.03.2025", placeholder="https://...pdf")
-        fy24_url   = st.text_input("FY24 Annual Report — 31.03.2024", placeholder="https://...pdf")
 
-    with tab2:
-        st.markdown('<p style="color:#9b9688;font-size:0.8rem">Upload if you have PDFs saved locally. Label each file clearly.</p>', unsafe_allow_html=True)
-        uploaded_files = st.file_uploader("Upload PDFs (select multiple)", type=['pdf'], accept_multiple_files=True,
-                                           help="Hold Ctrl to select multiple files")
-        if uploaded_files:
-            st.markdown(f'<p style="color:#c9a84c;font-size:0.8rem">✅ {len(uploaded_files)} file(s) uploaded</p>', unsafe_allow_html=True)
-            for f in uploaded_files:
-                st.markdown(f'<p style="color:#9b9688;font-size:0.75rem">• {f.name}</p>', unsafe_allow_html=True)
+# ─────────────────────────────────────────────
+# INVESTMENTS TABLE
+# ─────────────────────────────────────────────
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Investment Details</div>', unsafe_allow_html=True)
+st.caption("Add each bond / NCD held. Click + Add Bond to add more rows.")
 
-    st.markdown("---")
-    st.markdown("### Investments under Review")
-    st.markdown('<p style="color:#9b9688;font-size:0.8rem">Add one block per bond</p>', unsafe_allow_html=True)
+if "bonds" not in st.session_state:
+    st.session_state.bonds = [{"security": "", "yield": "", "agency": "", "rating": "", "fv": "", "sh": "", "ph": ""}]
 
-    if 'investments' not in st.session_state:
-        st.session_state.investments = [{'security':'','yield':'','agency':'','rating':'','businessHouse':'','fv':'','sh':'','ph':''}]
+def add_bond():
+    st.session_state.bonds.append({"security": "", "yield": "", "agency": "", "rating": "", "fv": "", "sh": "", "ph": ""})
 
-    investments_data = []
-    for i, inv in enumerate(st.session_state.investments):
-        with st.expander(f"Bond {i+1}" + (f" — {inv['security']}" if inv['security'] else ""), expanded=(i==0)):
-            r1c1,r1c2 = st.columns([2,1])
-            with r1c1: sec = st.text_input("Security / Maturity", value=inv['security'], placeholder="8.03% NCD May 02, 2026", key=f"sec_{i}")
-            with r1c2: yld = st.text_input("Holding Yield %", value=inv['yield'], placeholder="7.55", key=f"yld_{i}")
-            r2c1,r2c2,r2c3 = st.columns(3)
-            with r2c1: agency = st.text_input("Rating Agency", value=inv['agency'], placeholder="CRISIL", key=f"agency_{i}")
-            with r2c2: rating = st.text_input("Rating", value=inv['rating'], placeholder="AAA", key=f"rating_{i}")
-            with r2c3: bh = st.text_input("Business House", value=inv['businessHouse'], placeholder="PFC Group", key=f"bh_{i}")
-            r3c1,r3c2,r3c3 = st.columns(3)
-            with r3c1: fv = st.text_input("Face Value (Cr)", value=inv['fv'], placeholder="25", key=f"fv_{i}")
-            with r3c2: sh = st.text_input("SH", value=inv['sh'], placeholder="—", key=f"sh_{i}")
-            with r3c3: ph = st.text_input("PH", value=inv['ph'], placeholder="25", key=f"ph_{i}")
-            investments_data.append({'security':sec,'yield':yld,'agency':agency,'rating':rating,'businessHouse':bh,'fv':fv,'sh':sh,'ph':ph})
+def remove_bond(i):
+    if len(st.session_state.bonds) > 1:
+        st.session_state.bonds.pop(i)
 
-    if st.button("＋ Add another bond"):
-        st.session_state.investments.append({'security':'','yield':'','agency':'','rating':'','businessHouse':'','fv':'','sh':'','ph':''})
+header_cols = st.columns([3, 1.2, 1.2, 1.2, 1, 1, 1, 0.5])
+for col, label in zip(header_cols, ["Security / Maturity Date", "Yield (%)", "Rating Agency", "Rating", "FV (Cr)", "SH (Cr)", "PH (Cr)", ""]):
+    col.markdown(f"<small style='color:#9D9890;font-weight:600;text-transform:uppercase;letter-spacing:0.05em'>{label}</small>", unsafe_allow_html=True)
+
+for i, bond in enumerate(st.session_state.bonds):
+    cols = st.columns([3, 1.2, 1.2, 1.2, 1, 1, 1, 0.5])
+    st.session_state.bonds[i]["security"] = cols[0].text_input("sec", value=bond["security"], key=f"sec_{i}", label_visibility="collapsed", placeholder="NCD DD.MM.YYYY")
+    st.session_state.bonds[i]["yield"]    = cols[1].text_input("yld", value=bond["yield"],    key=f"yld_{i}", label_visibility="collapsed", placeholder="7.50")
+    st.session_state.bonds[i]["agency"]   = cols[2].text_input("agc", value=bond["agency"],   key=f"agc_{i}", label_visibility="collapsed", placeholder="CRISIL")
+    st.session_state.bonds[i]["rating"]   = cols[3].text_input("rtg", value=bond["rating"],   key=f"rtg_{i}", label_visibility="collapsed", placeholder="AAA")
+    st.session_state.bonds[i]["fv"]       = cols[4].text_input("fv",  value=bond["fv"],       key=f"fv_{i}",  label_visibility="collapsed", placeholder="25")
+    st.session_state.bonds[i]["sh"]       = cols[5].text_input("sh",  value=bond["sh"],       key=f"sh_{i}",  label_visibility="collapsed", placeholder="")
+    st.session_state.bonds[i]["ph"]       = cols[6].text_input("ph",  value=bond["ph"],       key=f"ph_{i}",  label_visibility="collapsed", placeholder="25")
+    if cols[7].button("✕", key=f"del_{i}"):
+        remove_bond(i)
         st.rerun()
 
-with col2:
-    st.markdown("### Generate Report")
-    s1,s2,s3 = st.columns(3)
-    with s1: st.markdown(f'<div style="background:#1c1c24;border:1px solid #2a2a35;border-radius:10px;padding:16px;text-align:center"><div style="font-family:serif;font-size:1.8rem;color:#c9a84c">~60s</div><div style="font-size:0.7rem;color:#9b9688;text-transform:uppercase;letter-spacing:1px">Per Report</div></div>', unsafe_allow_html=True)
-    with s2: st.markdown(f'<div style="background:#1c1c24;border:1px solid #2a2a35;border-radius:10px;padding:16px;text-align:center"><div style="font-family:serif;font-size:1.8rem;color:#c9a84c">₹0</div><div style="font-size:0.7rem;color:#9b9688;text-transform:uppercase;letter-spacing:1px">Cost</div></div>', unsafe_allow_html=True)
-    with s3: st.markdown(f'<div style="background:#1c1c24;border:1px solid #2a2a35;border-radius:10px;padding:16px;text-align:center"><div style="font-family:serif;font-size:1.4rem;color:#c9a84c">{entity_type.split("/")[0].strip()}</div><div style="font-size:0.7rem;color:#9b9688;text-transform:uppercase;letter-spacing:1px">Entity</div></div>', unsafe_allow_html=True)
+st.button("+ Add Bond", on_click=add_bond)
+st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("")
-    generate = st.button("✦ Generate Credit Report", use_container_width=True)
 
-    if generate:
-        errors = []
-        if not api_key: errors.append("Gemini API key required")
-        if not issuer_name: errors.append("Issuer name required")
-        if not prepared_by: errors.append("Prepared By required")
-        if not reviewed_by: errors.append("Reviewed By required")
-        if errors:
-            for e in errors: st.error(f"⚠️ {e}")
-        else:
-            entity_rules = {
-                'bank': 'Bank/SFB. INCLUDE: NII, Deposits, CASA%, GNPA/Gross Stage 3%, NNPA/Net Stage 3%, CAR%, Tier I CAR%, ROA%, ROE%, NIM%. NO Debt/Equity.',
-                'nbfc': 'NBFC/IFC. INCLUDE: NII, Loans & Advances, Borrowings, Net Worth, GNPA/Gross Stage 3%, NNPA/Net Stage 3%, CRAR%, Debt/Equity, EPS, NIM%. NO Deposits.',
-                'psu' : 'PSU Finance. INCLUDE: NII, PAT, Net Worth, Loans, Borrowings, GNPA/Gross Stage 3%, NNPA/Net Stage 3%, CRAR%, Debt/Equity, EPS. NO Deposits.',
-                'apex': 'Apex DFI. INCLUDE: NII, PAT, Net Worth, Advances, Borrowings, GNPA%, NNPA%, CRAR%, ROA%. Comment on GoI mandate.'
-            }
+# ─────────────────────────────────────────────
+# SOURCE DOCUMENTS — FILE API APPROACH
+# ─────────────────────────────────────────────
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Source Documents</div>', unsafe_allow_html=True)
+st.caption("Paste direct PDF URLs (from NSE/BSE filings) **or** upload files. PDFs are sent directly to Gemini for accurate visual reading — no text extraction.")
 
-            # ── Extract documents ─────────────────────────────
-            extracted_text = ''
-            doc_store = {'Q1FY26':'','Q2FY26':'','Q1FY25':'','Q2FY25':'','FY25':'','FY24':''}
+doc_tab, upload_tab = st.tabs(["📎 Paste URLs", "⬆️ Upload Files"])
 
-            url_map = [('Q1FY26',q1fy26_url),('Q2FY26',q2fy26_url),('Q1FY25',q1fy25_url),('Q2FY25',q2fy25_url),('FY25',fy25_url),('FY24',fy24_url)]
-            provided_urls = [(lbl,url) for lbl,url in url_map if url.strip()]
+with doc_tab:
+    st.markdown("**H1FY26** — April to September 2025")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown('<span class="url-tag">Q1FY26 · Apr–Jun 2025</span>', unsafe_allow_html=True)
+        q1fy26_url = st.text_input("q1fy26", placeholder="Direct PDF link from NSE/BSE", label_visibility="collapsed", key="q1fy26_url")
+    with c2:
+        st.markdown('<span class="url-tag">Q2FY26 · Jul–Sep 2025</span>', unsafe_allow_html=True)
+        q2fy26_url = st.text_input("q2fy26", placeholder="Direct PDF link from NSE/BSE", label_visibility="collapsed", key="q2fy26_url")
 
-            if provided_urls:
-                progress = st.progress(0, text="Fetching documents...")
-                for idx,(lbl,url) in enumerate(provided_urls):
-                    progress.progress((idx+1)/len(provided_urls), text=f"Fetching {lbl}...")
-                    doc_store[lbl] = fetch_pdf(url, lbl)
-                progress.empty()
-                st.success(f"✅ {len(provided_urls)} document(s) fetched")
+    st.markdown("**H1FY25** — April to September 2024")
+    c3, c4 = st.columns(2)
+    with c3:
+        st.markdown('<span class="url-tag">Q1FY25 · Apr–Jun 2024</span>', unsafe_allow_html=True)
+        q1fy25_url = st.text_input("q1fy25", placeholder="Direct PDF link from NSE/BSE", label_visibility="collapsed", key="q1fy25_url")
+    with c4:
+        st.markdown('<span class="url-tag">Q2FY25 · Jul–Sep 2024</span>', unsafe_allow_html=True)
+        q2fy25_url = st.text_input("q2fy25", placeholder="Direct PDF link from NSE/BSE", label_visibility="collapsed", key="q2fy25_url")
 
-            # Handle uploaded files
-            if 'uploaded_files' in dir() and uploaded_files:
-                for uf in uploaded_files:
-                    fname = uf.name.lower()
-                    if 'q1' in fname and ('fy26' in fname or '2025' in fname and 'q1' in fname): lbl='Q1FY26'
-                    elif 'q2' in fname and ('fy26' in fname or 'sep' in fname and '2025' in fname): lbl='Q2FY26'
-                    elif 'q1' in fname and ('fy25' in fname or '2024' in fname): lbl='Q1FY25'
-                    elif 'q2' in fname and ('fy25' in fname or 'sep' in fname and '2024' in fname): lbl='Q2FY25'
-                    elif 'fy25' in fname or ('annual' in fname and '25' in fname): lbl='FY25'
-                    elif 'fy24' in fname or ('annual' in fname and '24' in fname): lbl='FY24'
-                    else: lbl=f'DOC_{uf.name[:10]}'
-                    doc_store[lbl] = extract_from_pdf_bytes(uf.read(), lbl)
-                st.success(f"✅ {len(uploaded_files)} file(s) processed")
+    st.markdown("**Annual Reports**")
+    c5, c6 = st.columns(2)
+    with c5:
+        st.markdown('<span class="url-tag">FY25 Annual Report · 31.03.2025</span>', unsafe_allow_html=True)
+        fy25_url = st.text_input("fy25", placeholder="Direct PDF link from NSE/BSE", label_visibility="collapsed", key="fy25_url")
+    with c6:
+        st.markdown('<span class="url-tag">FY24 Annual Report · 31.03.2024</span>', unsafe_allow_html=True)
+        fy24_url = st.text_input("fy24", placeholder="Direct PDF link from NSE/BSE", label_visibility="collapsed", key="fy24_url")
 
-            # Build combined text with H1 instructions
-            parts = []
-            if doc_store['Q1FY26'] or doc_store['Q2FY26']:
-                parts.append(f"""{'='*50}
-H1FY26 DATA (April 2025 - September 2025)
-FLOW ITEMS (Total Income, NII, PAT): ADD Q1FY26 + Q2FY26
-STOCK ITEMS (Assets, Loans, Borrowings, Net Worth): USE Q2FY26 value only
-RATIO ITEMS (GNPA%, NNPA%, CRAR%, NIM%, ROE%): USE Q2FY26 value only
-{'='*50}
-Q1FY26 (Apr-Jun 2025):
-{doc_store['Q1FY26'][:3000]}
+with upload_tab:
+    st.caption("Upload PDFs directly. Hold Ctrl to select multiple files at once.")
+    uploaded_files = st.file_uploader(
+        "Upload quarterly results and annual reports",
+        type=["pdf"],
+        accept_multiple_files=True,
+        label_visibility="collapsed"
+    )
+    if uploaded_files:
+        for f in uploaded_files:
+            st.markdown(f'<span class="status-ok">✓ {f.name}</span>', unsafe_allow_html=True)
 
-Q2FY26 (Jul-Sep 2025):
-{doc_store['Q2FY26'][:3000]}""")
+st.markdown('</div>', unsafe_allow_html=True)
 
-            if doc_store['Q1FY25'] or doc_store['Q2FY25']:
-                parts.append(f"""{'='*50}
-H1FY25 DATA (April 2024 - September 2024)
-FLOW ITEMS (Total Income, NII, PAT): ADD Q1FY25 + Q2FY25
-STOCK ITEMS (Assets, Loans, Borrowings, Net Worth): USE Q2FY25 value only
-RATIO ITEMS (GNPA%, NNPA%, CRAR%, NIM%, ROE%): USE Q2FY25 value only
-{'='*50}
-Q1FY25 (Apr-Jun 2024):
-{doc_store['Q1FY25'][:3000]}
 
-Q2FY25 (Jul-Sep 2024):
-{doc_store['Q2FY25'][:3000]}""")
+# ─────────────────────────────────────────────
+# HELPER: Download PDF from URL
+# ─────────────────────────────────────────────
+def download_pdf(url: str, label: str) -> tuple[bytes | None, str]:
+    """Download PDF from URL. Returns (bytes, filename) or (None, error)."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/pdf,*/*"
+        }
+        r = requests.get(url.strip(), headers=headers, timeout=30)
+        r.raise_for_status()
+        ct = r.headers.get("Content-Type", "")
+        if "pdf" not in ct.lower() and not url.strip().lower().endswith(".pdf"):
+            # Try to find PDF link on page
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(r.text, "html.parser")
+            pdf_links = []
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                text = a.get_text().lower()
+                if ".pdf" in href.lower():
+                    score = 0
+                    for kw in ["annual report", "quarterly", "financial result", "q1", "q2", "q3", "q4"]:
+                        if kw in text or kw in href.lower():
+                            score += 3
+                    for kw in ["csr", "sustainability", "agm notice", "postal ballot"]:
+                        if kw in text or kw in href.lower():
+                            score -= 5
+                    pdf_links.append((score, href))
+            if pdf_links:
+                pdf_links.sort(reverse=True)
+                best = pdf_links[0][1]
+                if not best.startswith("http"):
+                    from urllib.parse import urljoin
+                    best = urljoin(url, best)
+                r2 = requests.get(best, headers=headers, timeout=30)
+                r2.raise_for_status()
+                return r2.content, f"{label}.pdf"
+            return None, f"No PDF found at {url}"
+        return r.content, f"{label}.pdf"
+    except Exception as e:
+        return None, str(e)
 
-            if doc_store['FY25']:
-                parts.append(f"{'='*50}\n31.03.2025 - FY25 ANNUAL REPORT (use directly)\n{'='*50}\n{doc_store['FY25'][:4000]}")
-            if doc_store['FY24']:
-                parts.append(f"{'='*50}\n31.03.2024 - FY24 ANNUAL REPORT (use directly)\n{'='*50}\n{doc_store['FY24'][:4000]}")
 
-            extracted_text = '\n\n'.join(parts)[:14000] if parts else 'No documents provided. Use your knowledge of this company.'
+# ─────────────────────────────────────────────
+# HELPER: Upload file to Gemini File API
+# ─────────────────────────────────────────────
+def upload_to_gemini(pdf_bytes: bytes, filename: str) -> object | None:
+    """Upload PDF bytes to Gemini File API. Returns file object."""
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = tmp.name
+    try:
+        gfile = genai.upload_file(tmp_path, mime_type="application/pdf", display_name=filename)
+        # Wait for processing
+        for _ in range(20):
+            gfile = genai.get_file(gfile.name)
+            if gfile.state.name == "ACTIVE":
+                return gfile
+            time.sleep(2)
+        return None
+    except Exception as e:
+        st.warning(f"⚠️ Could not upload {filename}: {e}")
+        return None
+    finally:
+        os.unlink(tmp_path)
 
-            inv_text = '\n'.join(f"- {i.get('security')} | Yield {i.get('yield')}% | {i.get('rating')} ({i.get('agency')}) | FV Rs {i.get('fv')} Cr" for i in investments_data if i.get('security')) or 'No investments provided.'
 
-            prompt = f"""You are a senior credit analyst at an Indian Health Insurance company (IRDAI-regulated).
-Prepare a Credit Review & Analysis report.
+# ─────────────────────────────────────────────
+# HELPER: Build Gemini prompt
+# ─────────────────────────────────────────────
+def build_prompt(issuer_name, entity_type, industry, sector, review_period,
+                 business_house, prepared_by, reviewed_by, bonds,
+                 doc_labels: list[str]) -> str:
+
+    bonds_str = "\n".join([
+        f"  - Security: {b['security']} | Yield: {b['yield']}% | Agency: {b['agency']} | Rating: {b['rating']} | FV: {b['fv']} Cr | SH: {b['sh']} | PH: {b['ph']}"
+        for b in bonds if b.get("security")
+    ])
+
+    entity_rules = {
+        "NBFC / IFC": """
+INCLUDE: Total Income, Net Interest Income (NII), Profit After Tax (PAT), Total Assets, 
+Loans & Advances / Loan Book, Borrowings, Net Worth, GNPA / Gross Stage 3 (%), 
+NNPA / Net Stage 3 (%), CRAR / CAR (%), Debt/Equity Ratio, EPS (Rs), NIM (%), ROA (%), ROE (%)
+EXCLUDE: Deposits, CASA%, Tier I CAR% (unless stated)
+NOTE: GNPA may be called "Gross Stage 3", "Gross Impaired Assets", or "Asset Quality Ratio" — treat all as equivalent""",
+
+        "Bank / SFB": """
+INCLUDE: Total Income, Net Interest Income (NII), Profit After Tax (PAT), Total Assets, 
+Gross Advances, Deposits, CASA Ratio (%), GNPA (%), NNPA (%), CRAR / CAR (%), Tier I CAR (%),
+NIM (%), ROA (%), ROE (%)
+EXCLUDE: Debt/Equity (not applicable for banks)""",
+
+        "PSU Finance": """
+INCLUDE: Total Income, Net Interest Income (NII), Profit After Tax (PAT), Total Assets,
+Loans & Advances, Borrowings, Net Worth, GNPA / Gross Stage 3 (%), NNPA / Net Stage 3 (%),
+CRAR (%), Debt/Equity, EPS (Rs), ROA (%), ROE (%)
+EXCLUDE: Deposits
+NOTE: Comment on Government of India ownership and policy mandate""",
+
+        "Apex DFI": """
+INCLUDE: Total Income, Net Interest Income (NII), Profit After Tax (PAT), Total Assets,
+Loan Disbursements, Loan Outstanding / Advances, Borrowings, Net Worth, GNPA (%),
+NNPA (%), CRAR (%), ROA (%), Government support status
+EXCLUDE: Deposits from public, CASA%
+NOTE: Mention GoI ownership, developmental mandate, and off-balance sheet exposure if stated"""
+    }
+
+    doc_note = f"The following {len(doc_labels)} PDF documents have been uploaded for you to read directly:\n" + \
+               "\n".join([f"  • {l}" for l in doc_labels]) if doc_labels else \
+               "No documents provided — use your knowledge of this company's publicly disclosed financials."
+
+    return f"""You are a senior credit analyst at an Indian health insurance company preparing a formal credit report for the investment committee. 
 
 ISSUER: {issuer_name}
-ENTITY TYPE: {entity_code.upper()}
-ENTITY RULES: {entity_rules[entity_code]}
-INVESTMENTS: {inv_text}
+ENTITY TYPE: {entity_type}
+INDUSTRY: {industry}
+SECTOR: {sector}
+REVIEW PERIOD: {review_period}
+BUSINESS HOUSE: {business_house}
+PREPARED BY: {prepared_by}
+REVIEWED BY: {reviewed_by}
 
-{'='*55}
-SOURCE FINANCIAL DATA:
-{'='*55}
-{extracted_text}
+BONDS / NCDs HELD:
+{bonds_str}
 
-{'='*55}
-CRITICAL INSTRUCTIONS:
-{'='*55}
+SOURCE DOCUMENTS:
+{doc_note}
 
-H1 CALCULATION — MANDATORY:
-FLOW ITEMS (ADD Q1+Q2): Total Income, NII, PAT, Provisions, Fee Income
-STOCK ITEMS (Q2 ONLY): Total Assets, Loans, Borrowings, Net Worth, Deposits
-RATIO ITEMS (Q2 ONLY): GNPA%, NNPA%, CRAR%, NIM%, ROE%, ROA%
-ANNUAL (USE DIRECTLY): 31.03.2025 from FY25, 31.03.2024 from FY24
+=== FINANCIAL METRICS TO EXTRACT (based on entity type) ===
+{entity_rules.get(entity_type, entity_rules["NBFC / IFC"])}
 
-FORMULAS (use when not stated):
-- NII = Interest Income - Interest Expense
-- GNPA% = Gross Stage 3 / Gross Loan Book x 100
-- NNPA% = Net Stage 3 / Net Loan Book x 100
-- NIM% = (H1 NII x 2) / Avg Earning Assets x 100
-- ROA% = (H1 PAT x 2) / Avg Total Assets x 100
-- ROE% = (H1 PAT x 2) / Avg Net Worth x 100
-- Debt/Equity = Borrowings / Net Worth
-- EPS = PAT / Shares Outstanding
-Unit conversion: Lakhs÷100=Crores, Millions÷10=Crores
-NEVER output N/A. All figures in Rs. Crores.
+=== PERIOD COLUMNS REQUIRED ===
+The financial table MUST have exactly 4 columns:
+  Col 1: H1FY26  (April – September 2025)
+  Col 2: H1FY25  (April – September 2024)
+  Col 3: 31.03.2025 (Full Year FY25)
+  Col 4: 31.03.2024 (Full Year FY24)
 
-Respond ONLY with valid JSON:
-{{"companyProfile":"...","financialPeriods":["H1FY26","H1FY25","31.03.2025","31.03.2024"],"financialData":[{{"metric":"Total Income","values":["...","...","...","..."]}},{{"metric":"Net Interest Income","values":["...","...","...","..."]}},{{"metric":"Profit After Tax","values":["...","...","...","..."]}},{{"metric":"Net Worth","values":["...","...","...","..."]}},{{"metric":"Total Assets","values":["...","...","...","..."]}},{{"metric":"Loans & Advances","values":["...","...","...","..."]}},{{"metric":"Borrowings","values":["...","...","...","..."]}},{{"metric":"GNPA / Gross Stage 3 (%)","values":["...","...","...","..."]}},{{"metric":"NNPA / Net Stage 3 (%)","values":["...","...","...","..."]}},{{"metric":"CRAR / CAR (%)","values":["...","...","...","..."]}}],"conditionalMetrics":[{{"metric":"Deposits","values":["...","...","...","..."],"includeFor":["bank","apex"]}},{{"metric":"CASA (%)","values":["...","...","...","..."],"includeFor":["bank"]}},{{"metric":"NIM (%)","values":["...","...","...","..."],"includeFor":["bank","nbfc","psu"]}},{{"metric":"ROA (%)","values":["...","...","...","..."],"includeFor":["bank","apex"]}},{{"metric":"ROE (%)","values":["...","...","...","..."],"includeFor":["bank","nbfc","psu"]}},{{"metric":"Tier I CAR (%)","values":["...","...","...","..."],"includeFor":["bank"]}},{{"metric":"Debt/Equity","values":["...","...","...","..."],"includeFor":["nbfc","psu"]}},{{"metric":"EPS (Rs)","values":["...","...","...","..."],"includeFor":["nbfc","psu"]}}],"comments":[{{"heading":"Profitability","text":"..."}},{{"heading":"Asset Quality","text":"..."}},{{"heading":"Capitalisation","text":"..."}},{{"heading":"Liquidity","text":"..."}}],"recommendation":"Keeping in view..."}}"""
+=== H1 CALCULATION RULES — CRITICAL ===
+FLOW ITEMS — ADD Q1 + Q2 (income statement items):
+  Total Income, Net Interest Income, PAT, Provisions, Fee Income
+  H1FY26 = Q1FY26 value + Q2FY26 value
+  H1FY25 = Q1FY25 value + Q2FY25 value
 
-            with st.spinner('🤖 Gemini is analyzing and writing your credit report...'):
-                try:
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(model_name='gemini-2.5-flash', generation_config=genai.GenerationConfig(temperature=0.1, max_output_tokens=16000))
-                    response = model.generate_content(prompt)
-                    raw = response.text
+STOCK ITEMS — USE Q2 VALUE ONLY (balance sheet at period end):
+  Total Assets, Loans & Advances, Borrowings, Net Worth, Deposits
+  H1FY26 = Q2FY26 value (as at 30 Sep 2025)
+  H1FY25 = Q2FY25 value (as at 30 Sep 2024)
 
-                    clean = re.sub(r'```json|```','',raw).strip()
-                    match = re.search(r'\{[\s\S]*\}', clean)
-                    if match: clean = match.group(0)
-                    clean = re.sub(r',\s*}','}',clean); clean = re.sub(r',\s*]',']',clean)
+RATIO ITEMS — USE Q2 VALUE (point-in-time):
+  GNPA%, NNPA%, CRAR%, NIM%, ROA%, ROE%, Debt/Equity, CASA%
+  H1FY26 = Q2FY26 ratio
+  H1FY25 = Q2FY25 ratio
 
-                    try: report_data = json.loads(clean)
-                    except:
-                        try:
-                            import json5; report_data = json5.loads(clean)
-                        except: st.error("❌ Parse error — click Generate again"); st.stop()
+ANNUAL FIGURES: Use directly from FY25 Annual Report for 31.03.2025, FY24 Annual Report for 31.03.2024.
 
-                    report_data.update({'issuerName':issuer_name,'entityType':entity_code,'preparedBy':prepared_by,'reviewedBy':reviewed_by,'industry':industry,'sector':sector,'reviewPeriod':review_period,'investments':[i for i in investments_data if i.get('security')]})
+=== CALCULATION FORMULAS ===
+When figures are not directly stated, calculate them:
+- NII = Interest Income – Interest Expense
+- GNPA% = Gross NPA (or Gross Stage 3) / Gross Advances × 100
+- NNPA% = Net NPA (or Net Stage 3) / Net Advances × 100
+- NIM% = Annualised NII / Average Interest-Earning Assets × 100  [For H1: use NII × 2]
+- ROA% = Annualised PAT / Average Total Assets × 100              [For H1: use PAT × 2]
+- ROE% = Annualised PAT / Average Net Worth × 100                 [For H1: use PAT × 2]
+- Debt/Equity = Total Borrowings / Net Worth
+- EPS = PAT (annualised) / Shares Outstanding
+- PCR = Cumulative Provisions / Gross NPA × 100
+- Credit Cost% = Annualised Provisions / Average Loan Book × 100
 
-                    docx_buf = build_docx(report_data)
-                    filename = issuer_name.replace(' ','_')+'_Credit_Report.docx'
+UNIT: All monetary values in Rs. Crores. Auto-convert: Lakhs ÷ 100 = Crores, Millions ÷ 10 = Crores.
+STANDALONE ONLY: Always use standalone (not consolidated) figures.
+NEVER output N/A — if a figure cannot be found or calculated, state "Not disclosed" or your best estimate.
 
-                    st.success("✅ Report generated!")
-                    st.download_button("⬇ Download Word Report", data=docx_buf, file_name=filename, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-                    st.markdown("---")
-                    st.markdown("### Preview")
-                    st.markdown(f"""<div style="background:#16161c;border:1px solid #2a2a35;border-radius:12px;padding:24px">
-<p style="color:#c9a84c;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase">{entity_type}</p>
-<h3 style="margin:8px 0 4px;color:#e8e4dc">{issuer_name}</h3>
-<p style="color:#9b9688;font-size:0.85rem">{review_period}</p>
-<hr style="border-color:#2a2a35;margin:12px 0">
-<p style="font-size:0.9rem;color:#c8c4bc;line-height:1.7">{report_data.get('companyProfile','')}</p>
-<hr style="border-color:#2a2a35;margin:12px 0">
-<p style="font-size:0.85rem;color:#9b9688"><strong style="color:#c9a84c">Recommendation:</strong> {report_data.get('recommendation','')[:250]}...</p>
-</div>""", unsafe_allow_html=True)
+=== OUTPUT FORMAT ===
+Respond ONLY with valid JSON. No markdown, no explanation, no preamble.
 
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+{{
+  "company_profile": "4-6 sentence formal paragraph about the company — history, ownership, business model, market position, regulatory standing",
+  "financial_table": [
+    {{"metric": "Total Income (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Net Interest Income (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Profit After Tax (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Total Assets (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Loans & Advances / Loan Book (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Borrowings (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Net Worth (Rs Cr)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "GNPA / Gross Stage 3 (%)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "NNPA / Net Stage 3 (%)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "CRAR / CAR (%)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "NIM (%)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "ROA (%)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "ROE (%)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}},
+    {{"metric": "Debt/Equity (x)", "h1fy26": "...", "h1fy25": "...", "mar25": "...", "mar24": "..."}}
+  ],
+  "profitability": "2-3 sentences with specific numbers on income growth, NIM trend, PAT growth, ROA/ROE",
+  "asset_quality": "2-3 sentences on GNPA/NNPA trend, Stage 3 movement, PCR, credit cost",
+  "capitalisation": "2-3 sentences on CRAR adequacy, Tier I ratio, net worth growth, leverage",
+  "liquidity": "2-3 sentences on borrowing profile, maturity mix, ALM, debt/equity, access to markets",
+  "recommendation": "Paragraph starting with 'Keeping in view...' — summarise the investment case and recommend continuation/review of exposure"
+}}"""
+
+
+# ─────────────────────────────────────────────
+# HELPER: Parse Gemini JSON response
+# ─────────────────────────────────────────────
+def parse_response(raw: str) -> dict:
+    clean = re.sub(r"```json|```", "", raw).strip()
+    match = re.search(r"\{[\s\S]*\}", clean)
+    if match:
+        clean = match.group(0)
+    try:
+        return json.loads(clean)
+    except Exception:
+        try:
+            return json5.loads(clean)
+        except Exception as e:
+            raise ValueError(f"Could not parse Gemini response: {e}\n\nRaw (first 500 chars):\n{raw[:500]}")
+
+
+# ─────────────────────────────────────────────
+# HELPER: Build Word document
+# ─────────────────────────────────────────────
+def set_cell_bg(cell, hex_color):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex_color)
+    tcPr.append(shd)
+
+
+def add_border(table):
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    tblBorders = OxmlElement("w:tblBorders")
+    for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
+        border = OxmlElement(f"w:{border_name}")
+        border.set(qn("w:val"), "single")
+        border.set(qn("w:sz"), "4")
+        border.set(qn("w:space"), "0")
+        border.set(qn("w:color"), "2A2A5A")
+        tblBorders.append(border)
+    tblPr.append(tblBorders)
+
+
+def build_docx(data: dict, issuer_name, entity_type, industry, sector,
+               review_period, business_house, prepared_by, reviewed_by, bonds) -> bytes:
+    doc = Document()
+
+    # Page margins
+    for section in doc.sections:
+        section.top_margin    = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin   = Cm(2.0)
+        section.right_margin  = Cm(2.0)
+
+    # ── HEADER ──
+    header_table = doc.add_table(rows=1, cols=1)
+    header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    hc = header_table.rows[0].cells[0]
+    set_cell_bg(hc, "1A1A2E")
+    hp = hc.paragraphs[0]
+    hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = hp.add_run(issuer_name.upper())
+    run.font.name = "Calibri"
+    run.font.size = Pt(16)
+    run.font.bold = True
+    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+    hp2 = hc.add_paragraph()
+    hp2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r2 = hp2.add_run("CREDIT REVIEW & ANALYSIS")
+    r2.font.name = "Calibri"
+    r2.font.size = Pt(10)
+    r2.font.color.rgb = RGBColor(0xC9, 0xA8, 0x4C)
+    r2.font.bold = True
+
+    doc.add_paragraph()
+
+    # ── COMPANY PROFILE ──
+    cp_heading = doc.add_paragraph()
+    ch = cp_heading.add_run("COMPANY PROFILE")
+    ch.font.name = "Calibri"
+    ch.font.size = Pt(10)
+    ch.font.bold = True
+    ch.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+
+    cp_para = doc.add_paragraph()
+    cp_para.paragraph_format.space_after = Pt(8)
+    cr = cp_para.add_run(data.get("company_profile", ""))
+    cr.font.name = "Calibri"
+    cr.font.size = Pt(9.5)
+
+    # ── ISSUER INFORMATION TABLE ──
+    doc.add_paragraph()
+    issuer_heading = doc.add_paragraph()
+    ih = issuer_heading.add_run("ISSUER INFORMATION")
+    ih.font.name = "Calibri"
+    ih.font.size = Pt(10)
+    ih.font.bold = True
+    ih.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+
+    info_table = doc.add_table(rows=6, cols=2)
+    add_border(info_table)
+    info_rows = [
+        ("Issuer", issuer_name),
+        ("Industry (NIC)", industry),
+        ("Sector", sector),
+        ("Review Period", review_period),
+        ("Prepared By", prepared_by),
+        ("Reviewed By", reviewed_by),
+    ]
+    for i, (key, val) in enumerate(info_rows):
+        row = info_table.rows[i]
+        set_cell_bg(row.cells[0], "EFF6FF" if i % 2 == 0 else "FFFFFF")
+        set_cell_bg(row.cells[1], "EFF6FF" if i % 2 == 0 else "FFFFFF")
+        k_run = row.cells[0].paragraphs[0].add_run(key)
+        k_run.font.name = "Calibri"
+        k_run.font.size = Pt(9)
+        k_run.font.bold = True
+        v_run = row.cells[1].paragraphs[0].add_run(val)
+        v_run.font.name = "Calibri"
+        v_run.font.size = Pt(9)
+
+    # ── INVESTMENTS TABLE ──
+    doc.add_paragraph()
+    inv_heading = doc.add_paragraph()
+    ivh = inv_heading.add_run("BRIEF DETAIL OF INVESTMENT UNDER REVIEW")
+    ivh.font.name = "Calibri"
+    ivh.font.size = Pt(10)
+    ivh.font.bold = True
+    ivh.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+
+    inv_cols = ["Security / Maturity Date", "Yield (%)", "Rating Agency", "Rating",
+                "Business House", "F.V. (Cr)", "SH (Cr)", "PH (Cr)"]
+    inv_table = doc.add_table(rows=1 + len([b for b in bonds if b.get("security")]), cols=8)
+    add_border(inv_table)
+
+    for j, col_name in enumerate(inv_cols):
+        hcell = inv_table.rows[0].cells[j]
+        set_cell_bg(hcell, "1A1A2E")
+        hr = hcell.paragraphs[0].add_run(col_name)
+        hr.font.name = "Calibri"
+        hr.font.size = Pt(8)
+        hr.font.bold = True
+        hr.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        hcell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    row_idx = 1
+    for bond in bonds:
+        if not bond.get("security"):
+            continue
+        row = inv_table.rows[row_idx]
+        bg = "EFF6FF" if row_idx % 2 == 1 else "FFFFFF"
+        vals = [bond["security"], bond["yield"] + "%", bond["agency"],
+                bond["rating"], business_house, bond["fv"], bond["sh"], bond["ph"]]
+        for j, val in enumerate(vals):
+            set_cell_bg(row.cells[j], bg)
+            r = row.cells[j].paragraphs[0].add_run(val or "—")
+            r.font.name = "Calibri"
+            r.font.size = Pt(8.5)
+            row.cells[j].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        row_idx += 1
+
+    # ── FINANCIAL STRENGTH TABLE ──
+    doc.add_paragraph()
+    fs_heading = doc.add_paragraph()
+    fsh = fs_heading.add_run("FINANCIAL STRENGTH")
+    fsh.font.name = "Calibri"
+    fsh.font.size = Pt(10)
+    fsh.font.bold = True
+    fsh.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+
+    fin_data = data.get("financial_table", [])
+    fin_table = doc.add_table(rows=1 + len(fin_data), cols=5)
+    add_border(fin_table)
+
+    col_headers = ["Particulars", "H1FY26", "H1FY25", "31.03.2025", "31.03.2024"]
+    for j, hdr in enumerate(col_headers):
+        hcell = fin_table.rows[0].cells[j]
+        set_cell_bg(hcell, "1A1A2E")
+        hr = hcell.paragraphs[0].add_run(hdr)
+        hr.font.name = "Calibri"
+        hr.font.size = Pt(9)
+        hr.font.bold = True
+        hr.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        hcell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    for i, row_data in enumerate(fin_data):
+        row = fin_table.rows[i + 1]
+        bg = "EFF6FF" if i % 2 == 0 else "FFFFFF"
+        vals = [
+            row_data.get("metric", ""),
+            row_data.get("h1fy26", "—"),
+            row_data.get("h1fy25", "—"),
+            row_data.get("mar25",  "—"),
+            row_data.get("mar24",  "—"),
+        ]
+        for j, val in enumerate(vals):
+            set_cell_bg(row.cells[j], bg)
+            r = row.cells[j].paragraphs[0].add_run(str(val))
+            r.font.name = "Calibri"
+            r.font.size = Pt(8.5)
+            if j == 0:
+                r.font.bold = True
+            else:
+                row.cells[j].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # ── COMMENTS ──
+    doc.add_paragraph()
+    comments_heading = doc.add_paragraph()
+    comh = comments_heading.add_run("COMMENTS")
+    comh.font.name = "Calibri"
+    comh.font.size = Pt(10)
+    comh.font.bold = True
+    comh.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+
+    for label, key in [
+        ("Profitability", "profitability"),
+        ("Asset Quality", "asset_quality"),
+        ("Capitalisation", "capitalisation"),
+        ("Liquidity", "liquidity"),
+    ]:
+        subh_para = doc.add_paragraph()
+        subh = subh_para.add_run(label)
+        subh.font.name = "Calibri"
+        subh.font.size = Pt(9.5)
+        subh.font.bold = True
+        subh.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+
+        body_para = doc.add_paragraph()
+        body_para.paragraph_format.space_after = Pt(6)
+        br = body_para.add_run(data.get(key, ""))
+        br.font.name = "Calibri"
+        br.font.size = Pt(9.5)
+
+    # ── RECOMMENDATION ──
+    doc.add_paragraph()
+    rec_table = doc.add_table(rows=1, cols=1)
+    add_border(rec_table)
+    rc = rec_table.rows[0].cells[0]
+    set_cell_bg(rc, "F0FDF4")
+
+    rh = rc.paragraphs[0].add_run("RECOMMENDATION")
+    rh.font.name = "Calibri"
+    rh.font.size = Pt(9.5)
+    rh.font.bold = True
+    rh.font.color.rgb = RGBColor(0x16, 0x65, 0x34)
+
+    rp = rc.add_paragraph()
+    rr = rp.add_run(data.get("recommendation", ""))
+    rr.font.name = "Calibri"
+    rr.font.size = Pt(9.5)
+
+    # ── FOOTER ──
+    doc.add_paragraph()
+    footer_table = doc.add_table(rows=1, cols=2)
+    add_border(footer_table)
+    set_cell_bg(footer_table.rows[0].cells[0], "EFF6FF")
+    set_cell_bg(footer_table.rows[0].cells[1], "EFF6FF")
+
+    fm_run = footer_table.rows[0].cells[0].paragraphs[0].add_run(f"Fund Manager: {prepared_by}")
+    fm_run.font.name = "Calibri"
+    fm_run.font.size = Pt(8.5)
+    fm_run.font.bold = True
+
+    cio_para = footer_table.rows[0].cells[1].paragraphs[0]
+    cio_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    cio_run = cio_para.add_run(f"CIO: {reviewed_by}")
+    cio_run.font.name = "Calibri"
+    cio_run.font.size = Pt(8.5)
+    cio_run.font.bold = True
+
+    # Save to bytes
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+# ─────────────────────────────────────────────
+# GENERATE BUTTON
+# ─────────────────────────────────────────────
+st.markdown("---")
+col_gen, col_hint = st.columns([1, 3])
+with col_gen:
+    generate = st.button("⚡ Generate Report", use_container_width=True)
+with col_hint:
+    st.caption("PDFs are uploaded directly to Gemini — it reads tables visually, like a human analyst would.")
+
+if generate:
+    # Validate
+    errors = []
+    if not api_key:
+        errors.append("Gemini API key is required (sidebar)")
+    if not issuer_name:
+        errors.append("Issuer name is required")
+    if not prepared_by:
+        errors.append("Analyst name is required (sidebar)")
+    if errors:
+        for e in errors:
+            st.error(e)
+        st.stop()
+
+    # Configure Gemini
+    genai.configure(api_key=api_key)
+
+    with st.status("Generating report...", expanded=True) as status:
+
+        # ── Step 1: Collect & upload PDFs ──
+        st.write("📥 Collecting source documents...")
+        uploaded_gemini_files = []
+        doc_labels = []
+
+        url_map = {
+            "Q1FY26 (Apr–Jun 2025)": st.session_state.get("q1fy26_url", ""),
+            "Q2FY26 (Jul–Sep 2025)": st.session_state.get("q2fy26_url", ""),
+            "Q1FY25 (Apr–Jun 2024)": st.session_state.get("q1fy25_url", ""),
+            "Q2FY25 (Jul–Sep 2024)": st.session_state.get("q2fy25_url", ""),
+            "FY25 Annual Report":     st.session_state.get("fy25_url", ""),
+            "FY24 Annual Report":     st.session_state.get("fy24_url", ""),
+        }
+
+        for label, url in url_map.items():
+            if url and url.strip():
+                st.write(f"  ⬇️  Downloading {label}...")
+                pdf_bytes, fname = download_pdf(url.strip(), label.replace(" ", "_").replace("/", "-"))
+                if pdf_bytes:
+                    st.write(f"  ⬆️  Uploading {label} to Gemini...")
+                    gfile = upload_to_gemini(pdf_bytes, fname)
+                    if gfile:
+                        uploaded_gemini_files.append(gfile)
+                        doc_labels.append(label)
+                        st.write(f"  ✅ {label} ready")
+                    else:
+                        st.write(f"  ⚠️  {label} upload timed out — skipping")
+                else:
+                    st.write(f"  ⚠️  Could not download {label}: {fname}")
+
+        # Handle uploaded files
+        if uploaded_files:
+            for uf in uploaded_files:
+                st.write(f"  ⬆️  Uploading {uf.name} to Gemini...")
+                gfile = upload_to_gemini(uf.read(), uf.name)
+                if gfile:
+                    uploaded_gemini_files.append(gfile)
+                    doc_labels.append(uf.name)
+                    st.write(f"  ✅ {uf.name} ready")
+
+        if not uploaded_gemini_files:
+            st.write("  ℹ️  No documents uploaded — Gemini will use its training knowledge")
+
+        # ── Step 2: Call Gemini ──
+        st.write("🤖 Sending to Gemini for analysis...")
+
+        prompt = build_prompt(
+            issuer_name, entity_type, industry, sector, review_period,
+            business_house, prepared_by, reviewed_by,
+            st.session_state.bonds, doc_labels
+        )
+
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            generation_config={"temperature": 0.1, "max_output_tokens": 16000}
+        )
+
+        # Build content parts: all uploaded PDFs + prompt
+        content_parts = [f for f in uploaded_gemini_files] + [prompt]
+
+        for attempt in range(3):
+            try:
+                response = model.generate_content(content_parts)
+                raw = response.text
+                break
+            except Exception as e:
+                if attempt < 2:
+                    st.write(f"  ⏳ Rate limit — waiting 60s (attempt {attempt+1}/3)...")
+                    time.sleep(60)
+                else:
+                    st.error(f"Gemini error after 3 attempts: {e}")
+                    st.stop()
+
+        # ── Step 3: Parse ──
+        st.write("📋 Parsing response...")
+        try:
+            report_data = parse_response(raw)
+        except ValueError as e:
+            st.error(str(e))
+            st.stop()
+
+        # ── Step 4: Build Word doc ──
+        st.write("📝 Building Word document...")
+        docx_bytes = build_docx(
+            report_data, issuer_name, entity_type, industry, sector,
+            review_period, business_house, prepared_by, reviewed_by,
+            st.session_state.bonds
+        )
+
+        # Clean up Gemini files
+        for gf in uploaded_gemini_files:
+            try:
+                genai.delete_file(gf.name)
+            except Exception:
+                pass
+
+        status.update(label="✅ Report generated!", state="complete")
+
+    # ── RESULTS ──
+    st.markdown("---")
+    st.markdown("### 📄 Report Ready")
+
+    fname_out = f"{issuer_name.replace(' ', '_')}_Credit_Report_{review_period.replace(' ', '').replace('–', '-')}.docx"
+    st.download_button(
+        label=f"⬇️  Download {fname_out}",
+        data=docx_bytes,
+        file_name=fname_out,
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        use_container_width=True
+    )
+
+    # Preview
+    with st.expander("👁️ Preview — Company Profile & Recommendation"):
+        st.markdown(f"**{issuer_name}**")
+        st.write(report_data.get("company_profile", ""))
+        st.markdown("---")
+        st.markdown("**Recommendation**")
+        st.write(report_data.get("recommendation", ""))
+
+    with st.expander("📊 Preview — Financial Table"):
+        fin_rows = report_data.get("financial_table", [])
+        if fin_rows:
+            import pandas as pd
+            df = pd.DataFrame([{
+                "Metric": r["metric"],
+                "H1FY26": r.get("h1fy26", "—"),
+                "H1FY25": r.get("h1fy25", "—"),
+                "31.03.2025": r.get("mar25", "—"),
+                "31.03.2024": r.get("mar24", "—"),
+            } for r in fin_rows])
+            st.dataframe(df, use_container_width=True, hide_index=True)
