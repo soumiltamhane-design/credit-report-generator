@@ -866,7 +866,7 @@ if generate:
 
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
-            generation_config={"temperature": 0.1, "max_output_tokens": 16000}
+            generation_config={"temperature": 0.1, "max_output_tokens": 32000}
         )
 
         # Build content parts: all uploaded PDFs + prompt
